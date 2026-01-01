@@ -1,0 +1,10 @@
+.DS_Store
+node_modules/
+server/node_modules/
+web/node_modules/
+server/dist/
+web/dist/
+coverage/
+*.log
+fake-history/
+generated/
