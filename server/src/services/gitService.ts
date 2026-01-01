@@ -32,6 +32,8 @@ export interface GenerateRepoOptions {
   randomSeed?: string;
   /** When true, skips Git commands. */
   dryRun?: boolean;
+  /** Optional progress callback. */
+  onProgress?: (progress: number, message?: string) => void;
 }
 
 /**
@@ -51,6 +53,7 @@ export async function generateRepository(
     authorEmail,
     randomSeed,
     dryRun,
+    onProgress,
   } = options;
 
   await assertRepoDoesNotExist(repoPath);
@@ -59,13 +62,36 @@ export async function generateRepository(
     return [];
   }
 
+  const totalCommits = summary.totalCommits;
+  let completedCommits = 0;
+  let lastPercent = -1;
+  const reportProgress = (message?: string, force = false) => {
+    if (!onProgress) {
+      return;
+    }
+    const percent =
+      totalCommits > 0
+        ? Math.floor((completedCommits / totalCommits) * 100)
+        : 0;
+    if (!force && percent === lastPercent) {
+      return;
+    }
+    lastPercent = percent;
+    onProgress(percent, message);
+  };
+
+  reportProgress("Initializing repository", true);
+
   await fs.mkdir(repoPath, { recursive: true });
-  await runGit(repoPath, ["init"]);
+  await runGit(repoPath, ["init", "-b", "main"]);
   await runGit(repoPath, ["config", "user.name", authorName]);
   await runGit(repoPath, ["config", "user.email", authorEmail]);
 
   await writeRepoMetadata(repoPath, summary);
   const dumpFilePath = await ensureDumpFile(repoPath);
+  await runGit(repoPath, ["add", "history.json"]);
+
+  reportProgress("Writing commits", true);
 
   const seed = randomSeed ?? `${summary.firstGridDate}:${summary.lastGridDate}`;
   const rng = createRng(`${seed}:mutations`);
@@ -81,7 +107,7 @@ export async function generateRepository(
       const timestamp = formatGitTimestamp(commitDate);
       const mutation = buildMutation(rng, entry.date, i + 1);
       await appendDumpMutation(dumpFilePath, mutation);
-      await runGit(repoPath, ["add", "dump.txt", "history.json"]);
+      await runGit(repoPath, ["add", "dump.txt"]);
       await runGit(
         repoPath,
         ["commit", "-m", `chore(history): ${entry.date} #${i + 1}`, "--date", timestamp],
@@ -91,7 +117,15 @@ export async function generateRepository(
           GIT_COMMITTER_DATE: timestamp,
         }
       );
+      completedCommits += 1;
+      reportProgress("Writing commits");
     }
+  }
+
+  if (totalCommits === 0 && onProgress) {
+    onProgress(100, "No commits to write");
+  } else if (onProgress) {
+    onProgress(100, "Finalizing");
   }
 
   return getGitLogSample(repoPath);
@@ -115,14 +149,34 @@ function buildCommitTimes(
   const start = new Date(`${isoDate}T${String(startHour).padStart(2, "0")}:00:00`);
   const secondsRange = (endHour - startHour) * 60 * 60;
 
-  const times = Array.from({ length: count }, () => {
+  if (count <= 0) {
+    return [];
+  }
+
+  if (secondsRange <= 0) {
+    return [start];
+  }
+
+  if (count === 1) {
     const offsetSeconds = randomInt(rng, 0, Math.max(secondsRange - 1, 0));
     const commitDate = new Date(start.getTime());
     commitDate.setSeconds(commitDate.getSeconds() + offsetSeconds);
-    return commitDate;
-  });
+    return [commitDate];
+  }
 
-  return times.sort((a, b) => a.getTime() - b.getTime());
+  const times: Date[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const slotStart = Math.floor((i * secondsRange) / count);
+    const slotEnd = Math.floor(((i + 1) * secondsRange) / count);
+    const maxOffset = Math.max(slotStart, slotEnd - 1);
+    const offsetSeconds =
+      maxOffset > slotStart ? randomInt(rng, slotStart, maxOffset) : slotStart;
+    const commitDate = new Date(start.getTime());
+    commitDate.setSeconds(commitDate.getSeconds() + offsetSeconds);
+    times.push(commitDate);
+  }
+
+  return times;
 }
 
 /**

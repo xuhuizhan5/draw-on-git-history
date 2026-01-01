@@ -28,9 +28,11 @@ Creates a new Git repository and writes commits matching the plan.
 Same as `/api/preview`, plus:
 - `dryRun` (boolean, optional): if true, validates and returns without writing Git commits.
 - `overwriteExisting` (boolean, optional): if true, deletes the existing repo folder before generation.
+- `progressId` (string, optional): unique id for streaming progress updates.
 
 ### Response
 - `summary`: totals and date bounds.
+- `warnings`: human-friendly warnings for UI display.
 - `repoPath`: absolute path of the created repository.
 - `gitLogSample`: top 5 commits as a sanity check.
 
@@ -38,3 +40,17 @@ Same as `/api/preview`, plus:
 Errors return JSON with:
 - `error` (string): human-readable message.
 - `details` (string, optional): additional diagnostics.
+
+## GET /api/progress/:id
+Streams progress updates as Server-Sent Events (SSE).
+
+### Response (SSE payload)
+```json
+{
+  "id": "string",
+  "status": "pending | running | complete | error",
+  "progress": 0,
+  "message": "string",
+  "error": "string"
+}
+```

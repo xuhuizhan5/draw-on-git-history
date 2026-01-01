@@ -8,6 +8,12 @@ import type {
 import { AppConfig } from "../config/config";
 import { createPlan } from "../services/planService";
 import { generateRepository } from "../services/gitService";
+import {
+  completeProgress,
+  failProgress,
+  startProgress,
+  updateProgress,
+} from "../services/progressService";
 import { ValidationError } from "../utils/errors";
 import { assertPathWithinRoot, assertSafeFolderName } from "../utils/validation";
 
@@ -62,6 +68,7 @@ export function createGenerationController(deps: GenerationControllerDeps) {
         assertSafeFolderName(payload.folderName);
         const outputRoot = resolveOutputRoot(payload.outputRoot, config);
         const repoPath = path.join(outputRoot, payload.folderName);
+        const progressId = payload.progressId;
 
         const planResult = createPlan(
           payload.grid,
@@ -69,6 +76,10 @@ export function createGenerationController(deps: GenerationControllerDeps) {
           payload.intensityMap ?? config.intensityMap,
           payload.randomSeed
         );
+
+        if (progressId) {
+          startProgress(progressId, "Preparing repository");
+        }
 
         if (payload.overwriteExisting) {
           await removeExistingRepo(repoPath, outputRoot);
@@ -82,14 +93,28 @@ export function createGenerationController(deps: GenerationControllerDeps) {
           authorEmail: payload.author?.email ?? config.defaultAuthorEmail,
           randomSeed: payload.randomSeed,
           dryRun: payload.dryRun,
+          onProgress: progressId
+            ? (progress, message) => updateProgress(progressId, progress, message)
+            : undefined,
         });
+
+        if (progressId) {
+          completeProgress(progressId, "Generation complete");
+        }
 
         res.status(200).json({
           summary: planResult.summary,
+          warnings: planResult.warnings,
           repoPath,
           gitLogSample,
         });
       } catch (error) {
+        const payload = req.body as GenerateRequest;
+        if (payload?.progressId) {
+          const message =
+            error instanceof Error ? error.message : "Failed to generate commits.";
+          failProgress(payload.progressId, message);
+        }
         next(error);
       }
     },

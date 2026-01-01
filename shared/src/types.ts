@@ -85,6 +85,8 @@ export interface GenerateRequest extends PreviewRequest {
   dryRun?: boolean;
   /** When true, existing repo folder will be deleted first. */
   overwriteExisting?: boolean;
+  /** Optional progress id for streaming updates. */
+  progressId?: string;
 }
 
 /**
@@ -132,6 +134,8 @@ export interface PreviewResponse {
  */
 export interface GenerateResponse {
   summary: CommitPlanSummary;
+  /** Warnings for UI display. */
+  warnings: string[];
   /** Absolute path to the generated repository. */
   repoPath: string;
   /** A short sample of the Git log after generation. */

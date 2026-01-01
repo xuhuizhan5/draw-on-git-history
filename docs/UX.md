@@ -5,6 +5,7 @@
 - The legend is always visible to reinforce the level -> color mapping.
 - Date range inputs live alongside the grid to keep the timeline explicit.
 - Preview and generate actions are separated to encourage confirmation before writing Git history.
+- A helper note reminds users that GitHub recalculates contribution colors based on total history.
 
 ## Visual System
 - Typography blends Space Grotesk (headers/body) with IBM Plex Mono for technical readouts.

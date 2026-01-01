@@ -24,5 +24,5 @@ A seeded RNG picks a commit count within each range, ensuring deterministic plan
 
 ## Commit Timestamps
 - Commits are scheduled between 09:00 and 20:00 local time.
-- Each commit's timestamp is generated using the same seeded RNG and sorted to keep Git history chronological.
+- The day is divided into slots per commit; each slot gets a seeded, jittered timestamp so commits stay chronological without an extra sort pass.
 - Git timestamps are formatted as `YYYY-MM-DDTHH:mm:ss+/-HHMM` and written via `--date` plus `GIT_AUTHOR_DATE`/`GIT_COMMITTER_DATE`.

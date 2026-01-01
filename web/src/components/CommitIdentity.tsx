@@ -4,16 +4,16 @@ import type { ChangeEvent } from "react";
  * Props for commit identity inputs.
  */
 export interface CommitIdentityProps {
-  /** Commit author name. */
-  authorName: string;
-  /** Commit author email. */
-  authorEmail: string;
+  /** GitHub username to credit. */
+  githubUsername: string;
+  /** GitHub email to credit. */
+  githubEmail: string;
   /** Replace existing repo flag. */
   overwriteExisting: boolean;
-  /** Change handler for author name. */
-  onAuthorNameChange: (value: string) => void;
-  /** Change handler for author email. */
-  onAuthorEmailChange: (value: string) => void;
+  /** Change handler for GitHub username. */
+  onGithubUsernameChange: (value: string) => void;
+  /** Change handler for GitHub email. */
+  onGithubEmailChange: (value: string) => void;
   /** Change handler for overwrite option. */
   onOverwriteExistingChange: (value: boolean) => void;
 }
@@ -25,42 +25,45 @@ export interface CommitIdentityProps {
  * @return JSX element.
  */
 export function CommitIdentity({
-  authorName,
-  authorEmail,
+  githubUsername,
+  githubEmail,
   overwriteExisting,
-  onAuthorNameChange,
-  onAuthorEmailChange,
+  onGithubUsernameChange,
+  onGithubEmailChange,
   onOverwriteExistingChange,
 }: CommitIdentityProps) {
   return (
     <div className="panel">
       <div className="panel-header">
         <h3>Commit Identity</h3>
-        <p>Use the GitHub-verified email you want credited.</p>
+        <p>Use the GitHub username and verified email you want credited.</p>
       </div>
       <div className="panel-body">
         <label className="field">
-          <span>Author name</span>
+          <span>GitHub username</span>
           <input
             type="text"
-            placeholder="Jane Doe"
-            value={authorName}
+            placeholder="octocat"
+            value={githubUsername}
             onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              onAuthorNameChange(event.target.value)
+              onGithubUsernameChange(event.target.value)
             }
           />
         </label>
         <label className="field">
-          <span>Author email</span>
+          <span>GitHub email</span>
           <input
             type="email"
-            placeholder="jane@example.com"
-            value={authorEmail}
+            placeholder="octocat@users.noreply.github.com"
+            value={githubEmail}
             onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              onAuthorEmailChange(event.target.value)
+              onGithubEmailChange(event.target.value)
             }
           />
         </label>
+        <span className="helper-text">
+          These values are used for commit authorship and the push command preview.
+        </span>
         <label className="checkbox-field">
           <input
             type="checkbox"
@@ -70,7 +73,7 @@ export function CommitIdentity({
           <span>Replace existing repository on generate</span>
         </label>
         <span className="helper-text">
-          Recommended when changing identity, so old commits are removed.
+          Recommended when changing GitHub identity, so old commits are removed.
         </span>
       </div>
     </div>

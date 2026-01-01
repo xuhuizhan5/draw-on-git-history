@@ -5,7 +5,7 @@ import type {
   PreviewResponse,
 } from "../../../shared/src/types";
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? "";
+export const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 
 /**
  * Generic API error.
@@ -45,6 +45,16 @@ export async function generatePlan(
   payload: GenerateRequest
 ): Promise<GenerateResponse> {
   return sendJson<GenerateResponse>(`${API_BASE}/api/generate`, payload);
+}
+
+/**
+ * Builds the progress stream URL for a generation run.
+ *
+ * @param progressId Progress id.
+ * @return SSE URL.
+ */
+export function progressStreamUrl(progressId: string): string {
+  return `${API_BASE}/api/progress/${progressId}`;
 }
 
 /**

@@ -3,6 +3,11 @@ import { z } from "zod";
 import { createGenerationController } from "../controllers/generationController";
 import { AppConfig } from "../config/config";
 import { validateBody } from "../middlewares/validateBody";
+import {
+  ensureProgress,
+  getProgress,
+  subscribeProgress,
+} from "../services/progressService";
 
 /**
  * Builds the router for generation APIs.
@@ -71,10 +76,30 @@ export function buildGenerationRouter(config: AppConfig): Router {
   const generateSchema = previewSchema.extend({
     dryRun: z.boolean().optional(),
     overwriteExisting: z.boolean().optional(),
+    progressId: z.string().min(1).optional(),
   });
 
   router.post("/preview", validateBody(previewSchema), controller.preview);
   router.post("/generate", validateBody(generateSchema), controller.generate);
+  router.get("/progress/:id", (req, res) => {
+    const { id } = req.params;
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders?.();
+
+    const send = (state: unknown) => {
+      res.write(`data: ${JSON.stringify(state)}\n\n`);
+    };
+
+    const initial = getProgress(id) ?? ensureProgress(id);
+    send(initial);
+
+    const unsubscribe = subscribeProgress(id, send);
+    req.on("close", () => {
+      unsubscribe();
+    });
+  });
 
   return router;
 }

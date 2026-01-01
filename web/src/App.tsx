@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   CommitIntensityMap,
   CommitLevel,
@@ -6,7 +6,7 @@ import type {
   PreviewRequest,
   PreviewResponse,
 } from "../../shared/src/types";
-import { generatePlan, previewPlan } from "./api/client";
+import { generatePlan, previewPlan, progressStreamUrl } from "./api/client";
 import { DateInputs } from "./components/DateInputs";
 import { FolderInputs } from "./components/FolderInputs";
 import { Grid } from "./components/Grid";
@@ -48,30 +48,39 @@ function createEmptyGrid(): CommitLevel[][] {
  * @return JSX element.
  */
 export default function App() {
-  const currentYear = new Date().getFullYear();
+  const defaultYear = 2025;
   const suggestedRange = useMemo(
-    () => suggestRangeForYear(currentYear),
-    [currentYear]
+    () => suggestRangeForYear(defaultYear),
+    [defaultYear]
   );
 
   const [grid, setGrid] = useState<CommitLevel[][]>(createEmptyGrid());
   const [folderName, setFolderName] = useState("fake-history");
   const [startDate, setStartDate] = useState(suggestedRange.startDate);
   const [endDate, setEndDate] = useState(suggestedRange.endDate);
-  const [year, setYear] = useState(currentYear);
+  const [year, setYear] = useState(defaultYear);
   const [seed, setSeed] = useState("");
   const [selectedLevel, setSelectedLevel] = useState<CommitLevel>(2);
   const [isDrawing, setIsDrawing] = useState(false);
   const [intensityMap, setIntensityMap] =
     useState<CommitIntensityMap>(DEFAULT_INTENSITY);
-  const [authorName, setAuthorName] = useState("Draw Bot");
-  const [authorEmail, setAuthorEmail] = useState("drawbot@example.com");
+  const [githubUsername, setGithubUsername] = useState("");
+  const [githubEmail, setGithubEmail] = useState("");
   const [overwriteExisting, setOverwriteExisting] = useState(true);
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
   const [repoPath, setRepoPath] = useState<string | undefined>(undefined);
   const [gitLogSample, setGitLogSample] = useState<string[] | undefined>(undefined);
-  const [loading, setLoading] = useState(false);
+  const [loadingAction, setLoadingAction] = useState<"preview" | "generate" | null>(
+    null
+  );
+  const [progress, setProgress] = useState(0);
+  const [progressMessage, setProgressMessage] = useState("");
+  const [progressStatus, setProgressStatus] = useState<
+    "pending" | "running" | "complete" | "error" | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
+  const summaryRef = useRef<HTMLElement | null>(null);
+  const progressSourceRef = useRef<EventSource | null>(null);
 
   const gridPreviewDate = useMemo(() => {
     if (!startDate || !isValidIsoDate(startDate)) {
@@ -123,6 +132,52 @@ export default function App() {
     return () => window.removeEventListener("pointerup", handlePointerUp);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      progressSourceRef.current?.close();
+    };
+  }, []);
+
+  const scrollToSummary = () => {
+    summaryRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const closeProgressStream = () => {
+    progressSourceRef.current?.close();
+    progressSourceRef.current = null;
+  };
+
+  const startProgressStream = (progressId: string) => {
+    closeProgressStream();
+    const source = new EventSource(progressStreamUrl(progressId));
+    progressSourceRef.current = source;
+
+    source.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data) as {
+          progress: number;
+          status: "pending" | "running" | "complete" | "error";
+          message?: string;
+          error?: string;
+        };
+        setProgress(payload.progress);
+        setProgressStatus(payload.status);
+        if (payload.message) {
+          setProgressMessage(payload.message);
+        }
+        if (payload.status === "complete" || payload.status === "error") {
+          closeProgressStream();
+        }
+      } catch (err) {
+        closeProgressStream();
+      }
+    };
+
+    source.onerror = () => {
+      closeProgressStream();
+    };
+  };
+
   const handleCellPaint = (
     rowIndex: number,
     colIndex: number,
@@ -155,47 +210,68 @@ export default function App() {
     grid: { rows: GRID_ROWS, cols: GRID_COLS, levels: grid },
     randomSeed: seed.trim() ? seed.trim() : undefined,
     intensityMap,
-    author: authorName.trim() && authorEmail.trim()
-      ? { name: authorName.trim(), email: authorEmail.trim() }
+    author: githubUsername.trim() && githubEmail.trim()
+      ? { name: githubUsername.trim(), email: githubEmail.trim() }
       : undefined,
   });
 
   const handlePreview = async () => {
     setError(null);
-    setLoading(true);
+    setPreview(null);
+    setRepoPath(undefined);
+    setGitLogSample(undefined);
+    closeProgressStream();
+    setProgress(0);
+    setProgressMessage("");
+    setProgressStatus(null);
+    setLoadingAction("preview");
+    scrollToSummary();
     try {
       const response = await previewPlan(buildPreviewPayload());
       setPreview(response);
-      setRepoPath(undefined);
-      setGitLogSample(undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to preview plan.");
     } finally {
-      setLoading(false);
+      setLoadingAction(null);
     }
   };
 
   const handleGenerate = async () => {
     setError(null);
-    setLoading(true);
+    setPreview(null);
+    setRepoPath(undefined);
+    setGitLogSample(undefined);
+    const progressId = crypto.randomUUID();
+    startProgressStream(progressId);
+    setProgress(0);
+    setProgressMessage("Preparing repository");
+    setProgressStatus("pending");
+    setLoadingAction("generate");
+    scrollToSummary();
     try {
       const payload: GenerateRequest = {
         ...buildPreviewPayload(),
         dryRun: false,
         overwriteExisting,
+        progressId,
       };
       const response = await generatePlan(payload);
       setPreview({
         summary: response.summary,
-        warnings: preview?.warnings ?? [],
-        plan: preview?.plan ?? [],
+        warnings: response.warnings,
+        plan: [],
       });
       setRepoPath(response.repoPath);
       setGitLogSample(response.gitLogSample);
+      setProgress(100);
+      setProgressStatus("complete");
+      closeProgressStream();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to generate commits.");
+      setProgressStatus("error");
+      closeProgressStream();
     } finally {
-      setLoading(false);
+      setLoadingAction(null);
     }
   };
 
@@ -231,18 +307,41 @@ export default function App() {
       <main className="main">
         <section className="controls-row">
           <div className="controls-column">
+            <CommitIdentity
+              githubUsername={githubUsername}
+              githubEmail={githubEmail}
+              overwriteExisting={overwriteExisting}
+              onGithubUsernameChange={setGithubUsername}
+              onGithubEmailChange={setGithubEmail}
+              onOverwriteExistingChange={setOverwriteExisting}
+            />
             <FolderInputs
               folderName={folderName}
               onFolderNameChange={setFolderName}
             />
-            <CommitIdentity
-              authorName={authorName}
-              authorEmail={authorEmail}
-              overwriteExisting={overwriteExisting}
-              onAuthorNameChange={setAuthorName}
-              onAuthorEmailChange={setAuthorEmail}
-              onOverwriteExistingChange={setOverwriteExisting}
+          </div>
+          <div className="controls-column">
+            <IntensitySettings
+              intensityMap={intensityMap}
+              onIntensityChange={setIntensityMap}
             />
+            <div className="panel">
+              <div className="panel-header">
+                <h3>Advanced Settings</h3>
+                <p>Optional inputs for deterministic results.</p>
+              </div>
+              <div className="panel-body">
+                <label className="field">
+                  <span>Random seed (optional)</span>
+                  <input
+                    type="text"
+                    placeholder="e.g. Happy new year! Welcome to 2026!"
+                    value={seed}
+                    onChange={(event) => setSeed(event.target.value)}
+                  />
+                </label>
+              </div>
+            </div>
           </div>
           <div className="controls-column">
             <DateInputs
@@ -254,29 +353,6 @@ export default function App() {
               onYearChange={setYear}
               onApplySuggestedRange={applySuggestedRange}
             />
-            <IntensitySettings
-              intensityMap={intensityMap}
-              onIntensityChange={setIntensityMap}
-            />
-          </div>
-          <div className="controls-column">
-            <div className="panel">
-              <div className="panel-header">
-                <h3>Advanced Settings</h3>
-                <p>Optional inputs for deterministic results.</p>
-              </div>
-              <div className="panel-body">
-                <label className="field">
-                  <span>Random seed (optional)</span>
-                  <input
-                    type="text"
-                    placeholder="e.g. launch-2024"
-                    value={seed}
-                    onChange={(event) => setSeed(event.target.value)}
-                  />
-                </label>
-              </div>
-            </div>
             <div className="panel actions-panel">
               <div className="panel-header">
                 <h3>Actions</h3>
@@ -288,20 +364,26 @@ export default function App() {
                   className="secondary"
                   onClick={handlePreview}
                   disabled={
-                    loading || !!rangeWarning || !!intensityWarning || !folderName.trim()
+                    !!loadingAction ||
+                    !!rangeWarning ||
+                    !!intensityWarning ||
+                    !folderName.trim()
                   }
                 >
-                  {loading ? "Working..." : "Preview plan"}
+                  {loadingAction === "preview" ? "Previewing..." : "Preview plan"}
                 </button>
                 <button
                   type="button"
                   className="primary"
                   onClick={handleGenerate}
                   disabled={
-                    loading || !!rangeWarning || !!intensityWarning || !folderName.trim()
+                    !!loadingAction ||
+                    !!rangeWarning ||
+                    !!intensityWarning ||
+                    !folderName.trim()
                   }
                 >
-                  {loading ? "Generating..." : "Generate commits"}
+                  {loadingAction === "generate" ? "Generating..." : "Generate commits"}
                 </button>
               </div>
             </div>
@@ -315,6 +397,10 @@ export default function App() {
             <div>
               <h2>Contribution Canvas</h2>
               <p>Pick a level, then click or drag to paint in any direction.</p>
+              <p className="note">
+                GitHub recalculates contribution colors across your full history, so
+                shades can shift once you push this repo.
+              </p>
             </div>
             <Legend
               selectedLevel={selectedLevel}
@@ -340,12 +426,18 @@ export default function App() {
           </div>
         </section>
 
-        <section className="summary-section">
+        <section className="summary-section" ref={summaryRef}>
           <PreviewPanel
             summary={preview?.summary ?? null}
             warnings={preview?.warnings ?? []}
             repoPath={repoPath}
             gitLogSample={gitLogSample}
+            loadingAction={loadingAction}
+            progress={progress}
+            progressStatus={progressStatus}
+            progressMessage={progressMessage}
+            folderName={folderName}
+            githubUsername={githubUsername}
           />
         </section>
       </main>

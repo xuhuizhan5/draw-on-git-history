@@ -7,7 +7,7 @@ import type {
   GridPayload,
 } from "../../../shared/src/types";
 import { flattenGrid } from "./grid";
-import { addDays, assertValidIsoDate, diffInDays, formatIsoDate } from "../utils/date";
+import { addDays, assertValidIsoDate, formatIsoDate } from "../utils/date";
 import { ValidationError } from "../utils/errors";
 import { createRng, randomInt } from "../utils/random";
 
@@ -38,13 +38,6 @@ export function buildCommitPlan(
   if (dateRange.endDate !== expectedEndDate) {
     throw new ValidationError(
       `endDate must be ${expectedEndDate} for a 7x51 grid.`
-    );
-  }
-
-  const diffDays = diffInDays(dateRange.startDate, dateRange.endDate);
-  if (diffDays !== EXPECTED_GRID_DAYS - 1) {
-    throw new ValidationError(
-      "Date range does not match 7x51 grid day count."
     );
   }
 
