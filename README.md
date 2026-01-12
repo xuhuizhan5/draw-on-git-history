@@ -70,3 +70,7 @@ git push -u origin main
 - API reference: `docs/API.md`
 - Algorithm details: `docs/ALGORITHM.md`
 - UX rationale: `docs/UX.md`
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=xuhuizhan5/draw-on-git-history&type=date&legend=top-left)](https://www.star-history.com/#xuhuizhan5/draw-on-git-history&type=date&legend=top-left)
